@@ -76,3 +76,11 @@ CREATE TABLE result_avaliacao (
     nota_obtida NUMERIC(5,2),
     PRIMARY KEY (id_avaliacao, id_aluno)
 );
+
+ALTER TABLE aluno_turma
+ADD COLUMN status VARCHAR(20) DEFAULT 'Ativo';
+
+
+ALTER TABLE aluno_turma
+ADD CONSTRAINT chk_status_aluno_turma
+CHECK (status IN ('Ativo', 'Aprovado', 'Reprovado', 'Cancelado', 'Trancado'));
