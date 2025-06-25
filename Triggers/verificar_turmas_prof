@@ -1,0 +1,54 @@
+CREATE OR REPLACE FUNCTION verificar_turmas_prof()
+RETURNS TRIGGER AS $$
+DECLARE 
+    qtd_turmas_prof INTEGER;
+    eh_so_professor BOOLEAN;
+    eh_professor_e_mais_algo BOOLEAN;
+BEGIN
+    -- Contar as turmas atuais do professor
+    SELECT COUNT(*) INTO qtd_turmas_prof
+    FROM professor_turma pt
+    WHERE pt.id_professor = NEW.id_professor;
+
+    -- APENAS a função 'Professor'
+    SELECT EXISTS (
+        SELECT 1
+        FROM func_prof fp
+        JOIN funcao f ON fp.id_funcao = f.id_funcao
+        WHERE fp.id_professor = NEW.id_professor
+        AND LOWER(f.funcao) = 'professor'
+        GROUP BY fp.id_professor
+        HAVING COUNT(fp.id_funcao) = 1 -- Tem apenas UMA função, e ela é 'Professor'
+    ) INTO eh_so_professor;
+
+    -- Tem 'Professor' E MAIS alguma outra função
+    SELECT EXISTS (
+        SELECT 1
+        FROM func_prof fp
+        WHERE fp.id_professor = NEW.id_professor
+        -- Verifica se o professor tem a função 'Professor'
+        AND EXISTS (SELECT 1 FROM func_prof fp2 JOIN funcao f2 ON fp2.id_funcao = f2.id_funcao WHERE fp2.id_professor = fp.id_professor AND LOWER(f2.funcao) = 'professor')
+        -- E verifica se o professor tem mais de uma função no total
+        GROUP BY fp.id_professor
+        HAVING COUNT(fp.id_funcao) > 1 
+    ) INTO eh_professor_e_mais_algo;
+
+		IF eh_professor_e_mais_algo THEN
+        -- Professor tem 'Professor' E mais outras funções
+        IF qtd_turmas_prof >= 3 THEN
+            RAISE EXCEPTION 'Esse professor possui a função "Professor" e outras, atingiu o limite de turmas (máximo de 3). Turmas atuais: %', qtd_turmas_prof;
+        END IF;
+    ELSIF eh_so_professor THEN
+        -- Professor tem APENAS a função 'Professor'
+        IF qtd_turmas_prof >= 5 THEN
+            RAISE EXCEPTION 'Esse professor possui apenas a função "Professor", atingiu o limite de turmas (máximo de 5). Turmas atuais: %', qtd_turmas_prof;
+        END IF;
+	END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_verificar_turmas_prof
+BEFORE INSERT OR UPDATE ON professor_turma
+FOR EACH ROW
+EXECUTE FUNCTION verificar_turmas_prof();
