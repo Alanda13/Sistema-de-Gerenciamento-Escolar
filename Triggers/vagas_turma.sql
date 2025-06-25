@@ -1,8 +1,3 @@
-CREATE TRIGGER trigger_evitar_conflito_horario
-BEFORE INSERT OR UPDATE ON professor_turma
-FOR EACH ROW
-EXECUTE FUNCTION evitar_conflito_horario_professor();
-
 CREATE OR REPLACE FUNCTION verificar_vagas_turma()
 RETURNS TRIGGER AS $$
 DECLARE
