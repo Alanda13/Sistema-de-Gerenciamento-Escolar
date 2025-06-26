@@ -356,6 +356,40 @@ SELECT * FROM ALUNO_TURMA AT
 JOIN TURMA T ON AT.id_turma = T.id_turma 
 JOIN periodo_letivo PL on T.id_periodo_letivo = PL.id_periodo_letivo
 
+CREATE OR REPLACE FUNCTION limitar_qtd_turmas_aluno()
+RETURNS TRIGGER AS $$
+DECLARE
+    qtd_turmas_do_aluno INTEGER;
+    id_periodo_letivo_da_nova_turma INTEGER;
+BEGIN
+    -- Descobrir o ID do período letivo da turma que está sendo usada para a nova matrícula
+    SELECT T.id_periodo_letivo
+    INTO id_periodo_letivo_da_nova_turma
+    FROM TURMA T
+    WHERE T.id_turma = NEW.id_turma;
+	
+    -- Descobrir a quantidade de turmas que o aluno já está matriculado nesse MESMO período letivo 
+    SELECT COUNT(al.id_turma) INTO qtd_turmas_do_aluno
+    FROM aluno_turma al
+    JOIN turma t ON al.id_turma = t.id_turma
+    WHERE al.id_aluno = NEW.id_aluno
+      AND t.id_periodo_letivo = id_periodo_letivo_da_nova_turma
+      AND al.id_turma <> NEW.id_turma;
+
+    IF (qtd_turmas_do_aluno + 1) > 7 THEN
+        RAISE EXCEPTION 'O aluno já está matriculado em % turmas neste período letivo. O limite máximo é de 7 turmas por período.', qtd_turmas_do_aluno;
+    END IF;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_limitar_qtd_turmas_aluno
+BEFORE INSERT OR UPDATE ON aluno_turma
+FOR EACH ROW
+EXECUTE FUNCTION limitar_qtd_turmas_aluno();
+		
+		
 -----------------------------------/\ TRIGGERS E FUNÇÕES /\------------------------------------------
 
 ----------------------------------------\/ INSERTS \/------------------------------------------------
@@ -382,6 +416,25 @@ VALUES ('Sala B205', 10, 5, 1, 1);
 INSERT INTO turma (sala, horario_aula, qtd_vagas, id_disciplina, id_periodo_letivo)
 VALUES ('Sala B303', 10, 5, 2, 1);
 
+-- Turmas até a 9: Para testar maximo de turmas
+INSERT INTO turma (sala, horario_aula, qtd_vagas, id_disciplina, id_periodo_letivo)
+VALUES ('SALA B101', 10, 5, 1, 1)
+
+INSERT INTO turma (sala, horario_aula, qtd_vagas, id_disciplina, id_periodo_letivo)
+VALUES ('SALA B102', 10, 5, 1, 1)
+
+INSERT INTO turma (sala, horario_aula, qtd_vagas, id_disciplina, id_periodo_letivo)
+VALUES ('SALA B103', 10, 5, 1, 1)
+
+INSERT INTO turma (sala, horario_aula, qtd_vagas, id_disciplina, id_periodo_letivo)
+VALUES ('SALA B104', 10, 5, 1, 1)
+
+INSERT INTO turma (sala, horario_aula, qtd_vagas, id_disciplina, id_periodo_letivo)
+VALUES ('SALA B105', 10, 5, 1, 1)
+
+INSERT INTO turma (sala, horario_aula, qtd_vagas, id_disciplina, id_periodo_letivo)
+VALUES ('SALA B106', 10, 5, 1, 1)
+
 -- Alunos
 INSERT INTO aluno (nome, cpf, email, data_nasc, telefone, id_curso, status) VALUES
 ('Alice Silva', '111.111.111-11', 'alice@email.com', '2000-01-15', '999911111', 1, 'ativo'),
@@ -396,7 +449,17 @@ INSERT INTO aluno_turma (id_aluno, id_turma) VALUES (1, 1);
 INSERT INTO aluno_turma (id_aluno, id_turma) VALUES (2, 1);
 -- Tentando matricular Daniel na turma 3, que é de um curso diferente do dele
 INSERT INTO aluno_turma (id_aluno, id_turma) VALUES (4, 3)
-
+-- Matricular alice em mais uma turma pra testar
+INSERT INTO aluno_turma (id_aluno, id_turma) VALUES (1, 2)
+-- Matricular alice em um monte de outras turmas pra impedir ela de passar de 7 turmas
+INSERT INTO aluno_turma (id_aluno, id_turma) 
+VALUES 
+(1, 3),
+(1, 4),
+(1, 5),
+(1, 6),
+(1, 7),
+(1, 8);
 -- Funcao
 INSERT INTO FUNCAO VALUES (1, 'PROFESSOR');
 INSERT INTO FUNCAO VALUES (2, 'COORDENADOR');
