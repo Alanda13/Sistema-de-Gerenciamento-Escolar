@@ -483,6 +483,16 @@ INSERT INTO PROFESSOR_TURMA VALUES (1, 1, 1);
 INSERT INTO PROFESSOR_TURMA VALUES (2, 2, 1);
 INSERT INTO PROFESSOR_TURMA VALUES (3, 1, 2);
 
+
+-----------------------------------------------------------------------------------
+----------------------------MUDANÇAS:----------------------------------------------
+-----------------------------------------------------------------------------------
+
+
+-------ADICIONEI ATRIBUTO CARGA_TURMA NA TABELA TURMA QUE VAI SER A CARGA HORARIA DA TURMA
+ALTER TABLE turma
+ADD COLUMN carga_turma INTEGER NOT NULL DEFAULT 60;
+
 ----------------------------------------/\ INSERTS /\------------------------------------------------
 -- -- Limpar dados
 -- DELETE FROM func_prof;
