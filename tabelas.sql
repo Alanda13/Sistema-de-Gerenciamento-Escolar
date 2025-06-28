@@ -99,15 +99,6 @@ CREATE TABLE result_avaliacao (
 );
 
 
------------------------------------------------------------------------------------
-----------------------------MUDANÇAS:----------------------------------------------
------------------------------------------------------------------------------------
-
-
--------ADICIONEI ATRIBUTO CARGA_TURMA NA TABELA TURMA QUE VAI SER A CARGA HORARIA DA TURMA
-ALTER TABLE turma
-ADD COLUMN carga_turma INTEGER NOT NULL DEFAULT 60;
-
 
 ----------------------------------\/ TRIGGERS E FUNÇÕES \/---------------------------------------------
 -- Função que valida o pré-requisito
