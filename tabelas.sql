@@ -98,6 +98,17 @@ CREATE TABLE result_avaliacao (
     PRIMARY KEY (id_avaliacao, id_aluno)
 );
 
+
+-----------------------------------------------------------------------------------
+----------------------------MUDANÇAS:----------------------------------------------
+-----------------------------------------------------------------------------------
+
+
+-------ADICIONEI ATRIBUTO CARGA_TURMA NA TABELA TURMA QUE VAI SER A CARGA HORARIA DA TURMA
+ALTER TABLE turma
+ADD COLUMN carga_turma INTEGER NOT NULL DEFAULT 60;
+
+
 ----------------------------------\/ TRIGGERS E FUNÇÕES \/---------------------------------------------
 -- Função que valida o pré-requisito
 CREATE OR REPLACE FUNCTION evitar_autopre_requisito()
@@ -483,15 +494,6 @@ INSERT INTO PROFESSOR_TURMA VALUES (1, 1, 1);
 INSERT INTO PROFESSOR_TURMA VALUES (2, 2, 1);
 INSERT INTO PROFESSOR_TURMA VALUES (3, 1, 2);
 
-
------------------------------------------------------------------------------------
-----------------------------MUDANÇAS:----------------------------------------------
------------------------------------------------------------------------------------
-
-
--------ADICIONEI ATRIBUTO CARGA_TURMA NA TABELA TURMA QUE VAI SER A CARGA HORARIA DA TURMA
-ALTER TABLE turma
-ADD COLUMN carga_turma INTEGER NOT NULL DEFAULT 60;
 
 ----------------------------------------/\ INSERTS /\------------------------------------------------
 -- -- Limpar dados
