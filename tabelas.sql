@@ -1,11 +1,11 @@
--- Tabela CURSO
+-- Tabela CURSO (inalterada)
 CREATE TABLE curso (
     id_curso SERIAL PRIMARY KEY,
     nome VARCHAR(100) NOT NULL,
     carga_horaria INTEGER NOT NULL
 );
 
--- Tabela DISCIPLINA com autorreferência (1 pré-requisito opcional)
+-- Tabela DISCIPLINA (inalterada, exceto pelo trigger de auto-requisito)
 CREATE TABLE disciplina (
     id_disciplina SERIAL PRIMARY KEY,
     nome_disciplina VARCHAR(100) NOT NULL,
@@ -14,7 +14,7 @@ CREATE TABLE disciplina (
     id_pre_requisito INTEGER REFERENCES disciplina(id_disciplina)
 );
 
--- Tabela ALUNO com status 'ativo' ou 'inativo'
+-- Tabela ALUNO (inalterada)
 CREATE TABLE aluno (
     id_aluno SERIAL PRIMARY KEY,
     nome VARCHAR(100) NOT NULL,
@@ -26,7 +26,7 @@ CREATE TABLE aluno (
     status VARCHAR(10) CHECK (status IN ('ativo', 'inativo')) DEFAULT 'ativo'
 );
 
--- Tabela PERIODO_LETIVO
+-- Tabela PERIODO_LETIVO (inalterada)
 CREATE TABLE periodo_letivo (
     id_periodo_letivo SERIAL PRIMARY KEY,
     ano INTEGER NOT NULL,
@@ -35,7 +35,7 @@ CREATE TABLE periodo_letivo (
     dt_fim DATE NOT NULL
 );
 
--- Tabela TURMA
+-- Tabela TURMA (inalterada)
 CREATE TABLE turma (
     id_turma SERIAL PRIMARY KEY,
     sala VARCHAR(50),
@@ -45,20 +45,22 @@ CREATE TABLE turma (
     id_periodo_letivo INTEGER NOT NULL REFERENCES periodo_letivo(id_periodo_letivo)
 );
 
--- Tabela ALUNO_TURMA (sem o campo media)
+-- Tabela ALUNO_TURMA (MODIFICADA: Adiciona id_aluno_turma como PK, e PK antiga vira UNIQUE)
+-- Representa a matrícula de um aluno em uma turma específica.
 CREATE TABLE aluno_turma (
+    id_aluno_turma SERIAL PRIMARY KEY, -- Novo ID para identificar a matrícula única
     id_aluno INTEGER NOT NULL REFERENCES aluno(id_aluno),
     id_turma INTEGER NOT NULL REFERENCES turma(id_turma),
-    PRIMARY KEY (id_aluno, id_turma)
+    UNIQUE (id_aluno, id_turma) -- Garante que um aluno não se matricule duas vezes na mesma turma
 );
 
--- Tabela FUNCAO
+-- Tabela FUNCAO (inalterada)
 CREATE TABLE funcao (
     id_funcao SERIAL PRIMARY KEY,
     funcao VARCHAR(100) NOT NULL
 );
 
--- Tabela PROFESSOR
+-- Tabela PROFESSOR (inalterada)
 CREATE TABLE professor (
     id_professor SERIAL PRIMARY KEY,
     nome VARCHAR(100) NOT NULL,
@@ -66,7 +68,7 @@ CREATE TABLE professor (
     telefone VARCHAR(20)
 );
 
--- Tabela FUNC_PROF (vínculo professor x função)
+-- Tabela FUNC_PROF (inalterada)
 CREATE TABLE func_prof (
     id_professor INTEGER NOT NULL REFERENCES professor(id_professor),
     id_funcao INTEGER NOT NULL REFERENCES funcao(id_funcao),
@@ -75,29 +77,60 @@ CREATE TABLE func_prof (
     PRIMARY KEY (id_professor, id_funcao)
 );
 
--- Tabela PROFESSOR_TURMA (associação professor <-> turma)
+-- Tabela PROFESSOR_TURMA (inalterada)
 CREATE TABLE professor_turma (
     id_prof_turma SERIAL PRIMARY KEY,
     id_professor INTEGER NOT NULL REFERENCES professor(id_professor),
     id_turma INTEGER NOT NULL REFERENCES turma(id_turma)
 );
 
--- Tabela AVALIACAO (lançada por professor_turma)
+-- Tabela AVALIACAO (MODIFICADA: Adiciona id_periodo_letivo)
+-- Representa uma avaliação lançada por um professor para uma turma em um período.
 CREATE TABLE avaliacao (
     id_avaliacao SERIAL PRIMARY KEY,
     descricao TEXT NOT NULL,
     data DATE NOT NULL,
-    id_prof_turma INTEGER NOT NULL REFERENCES professor_turma(id_prof_turma)
+    id_prof_turma INTEGER NOT NULL REFERENCES professor_turma(id_prof_turma),
+    id_periodo_letivo INTEGER NOT NULL REFERENCES periodo_letivo(id_periodo_letivo) -- Novo campo
 );
 
--- Tabela RESULT_AVALIACAO (nota por avaliação por aluno)
+-- Tabela RESULT_AVALIACAO (MODIFICADA: id_aluno_turma substitui id_aluno)
+-- Armazena a nota obtida por um aluno em uma avaliação específica.
 CREATE TABLE result_avaliacao (
     id_avaliacao INTEGER NOT NULL REFERENCES avaliacao(id_avaliacao),
-    id_aluno INTEGER NOT NULL REFERENCES aluno(id_aluno),
+    id_aluno_turma INTEGER NOT NULL REFERENCES aluno_turma(id_aluno_turma), -- Referencia a matrícula específica
     nota_obtida NUMERIC(5,2),
-    PRIMARY KEY (id_avaliacao, id_aluno)
+    PRIMARY KEY (id_avaliacao, id_aluno_turma)
 );
 
+-- NOVA TABELA: AULA
+-- Registra cada sessão de aula para uma turma específica com um professor em um período.
+CREATE TABLE aula (
+    id_aula SERIAL PRIMARY KEY,
+    id_periodo_letivo INTEGER NOT NULL REFERENCES periodo_letivo(id_periodo_letivo),
+    id_prof_turma INTEGER NOT NULL REFERENCES professor_turma(id_prof_turma), -- Professor que lecionou essa aula
+    assunto VARCHAR(255),
+    data DATE NOT NULL,
+    qtd_aulas INTEGER NOT NULL CHECK (qtd_aulas > 0) -- Horas desta sessão de aula (ex: 1 para 1h de aula)
+);
+
+-- NOVA TABELA: PRESENCA
+-- Relaciona um aluno em uma turma (id_aluno_turma) a uma aula específica (id_aula).
+CREATE TABLE presenca (
+    id_aula INTEGER NOT NULL REFERENCES aula(id_aula),
+    id_aluno_turma INTEGER NOT NULL REFERENCES aluno_turma(id_aluno_turma),
+    PRIMARY KEY (id_aula, id_aluno_turma) -- Garante uma única presença por aluno_turma por aula
+);
+
+-- NOVA TABELA: RESULT_ALUNO_PERIODO
+-- Armazena os resultados consolidados de um aluno para uma matrícula em uma turma/período.
+CREATE TABLE result_aluno_periodo (
+    id_result_aluno_periodo SERIAL PRIMARY KEY,
+    id_aluno_turma INTEGER NOT NULL UNIQUE REFERENCES aluno_turma(id_aluno_turma), -- Um resultado por matrícula
+    nota_media NUMERIC(5,2) DEFAULT 0.00, -- Média das notas do aluno naquela turma/período
+    taxa_de_presenca NUMERIC(5,2) DEFAULT 0.00, -- Percentual de presença do aluno naquela turma/período
+    resultado VARCHAR(20) CHECK (resultado IN ('Aprovado', 'Reprovado', 'Em Curso')) DEFAULT 'Em Curso' -- Status final
+);
 
 
 ----------------------------------\/ TRIGGERS E FUNÇÕES \/---------------------------------------------
@@ -311,14 +344,14 @@ RETURNS TRIGGER AS $$
 DECLARE
 	qtd_funcoes_prof INTEGER;
 BEGIN
-	-- PEGANDO A QUANTIDADE DE FUNÇÕES QUE ESSE PROFESSOR TEM
-	SELECT COUNT(p.id_professor) INTO qtd_funcoes_prof from professor p 
-	join func_prof fp ON p.id_professor = fp.id_professor
-	where p.id_professor = NEW.id_professor
-	group by p.id_professor;
+	-- PEGANDO A QUANTIDADE DE FUNÇÕES QUE ESSE PROFESSOR TERÁ APÓS A OPERAÇÃO
+	SELECT COUNT(fp.id_professor) INTO qtd_funcoes_prof
+	FROM func_prof fp
+	WHERE fp.id_professor = NEW.id_professor;
 	
-	IF (qtd_funcoes_prof = 2) THEN
-		RAISE EXCEPTION 'Esse professor atingiu o limite de funções (Maximo 2).';
+	
+	IF (qtd_funcoes_prof > 2) THEN
+		RAISE EXCEPTION 'Esse professor atingiu o limite de funções (Máximo: 2). Funções atuais: %', qtd_funcoes_prof;
 	END IF;
 	RETURN NEW;
 END;
@@ -353,10 +386,6 @@ CREATE TRIGGER trg_validar_matricula_aluno_turma
 BEFORE INSERT ON aluno_turma
 FOR EACH ROW
 EXECUTE FUNCTION validar_matricula_aluno_turma();
-
-SELECT * FROM ALUNO_TURMA AT 
-JOIN TURMA T ON AT.id_turma = T.id_turma 
-JOIN periodo_letivo PL on T.id_periodo_letivo = PL.id_periodo_letivo
 
 CREATE OR REPLACE FUNCTION limitar_qtd_turmas_aluno()
 RETURNS TRIGGER AS $$
@@ -393,15 +422,17 @@ EXECUTE FUNCTION limitar_qtd_turmas_aluno();
 		
 		
 -----------------------------------/\ TRIGGERS E FUNÇÕES /\------------------------------------------
-
+select * from result_aluno_periodo
+select * from curso
 ----------------------------------------\/ INSERTS \/------------------------------------------------
 -- Curso
 INSERT INTO curso (nome, carga_horaria) VALUES ('Engenharia de Software', 3600);
 INSERT INTO curso (nome, carga_horaria) VALUES ('Analise e desenvolvimento de sistemas', 3600);
 
 -- Disciplina
-INSERT INTO disciplina (nome_disciplina, carga_horaria, id_curso) VALUES ('Banco de Dados I', 60, 2); -- Use o ID do curso obtido acima
-
+INSERT INTO disciplina (nome_disciplina, carga_horaria, id_curso) VALUES ('Banco de Dados III', 60, 1); -- Use o ID do curso obtido acima
+INSERT INTO disciplina (nome_disciplina, carga_horaria, id_curso) VALUES ('Banco de Dados I', 60, 1); -- Use o ID do curso obtido acima
+INSERT INTO disciplina (nome_disciplina, carga_horaria, id_curso) VALUES ('Banco de Dados II', 60, 2); -- Use o ID do curso obtido acima
 -- Período Letivo
 INSERT INTO periodo_letivo (ano, semestre, dt_inicio, dt_fim) VALUES (2025, 1, '2025-02-01', '2025-06-30');
 
@@ -420,22 +451,22 @@ VALUES ('Sala B303', 10, 5, 2, 1);
 
 -- Turmas até a 9: Para testar maximo de turmas
 INSERT INTO turma (sala, horario_aula, qtd_vagas, id_disciplina, id_periodo_letivo)
-VALUES ('SALA B101', 10, 5, 1, 1)
+VALUES ('SALA B100SALA100', 10, 5, 3, 1);
 
 INSERT INTO turma (sala, horario_aula, qtd_vagas, id_disciplina, id_periodo_letivo)
-VALUES ('SALA B102', 10, 5, 1, 1)
+VALUES ('SALA B102', 10, 5, 1, 1);
 
 INSERT INTO turma (sala, horario_aula, qtd_vagas, id_disciplina, id_periodo_letivo)
-VALUES ('SALA B103', 10, 5, 1, 1)
+VALUES ('SALA B103', 10, 5, 1, 1);
 
 INSERT INTO turma (sala, horario_aula, qtd_vagas, id_disciplina, id_periodo_letivo)
-VALUES ('SALA B104', 10, 5, 1, 1)
+VALUES ('SALA B104', 10, 5, 1, 1);
 
 INSERT INTO turma (sala, horario_aula, qtd_vagas, id_disciplina, id_periodo_letivo)
-VALUES ('SALA B105', 10, 5, 1, 1)
+VALUES ('SALA B105', 10, 5, 1, 1);
 
 INSERT INTO turma (sala, horario_aula, qtd_vagas, id_disciplina, id_periodo_letivo)
-VALUES ('SALA B106', 10, 5, 1, 1)
+VALUES ('SALA B106', 10, 5, 1, 1);
 
 -- Alunos
 INSERT INTO aluno (nome, cpf, email, data_nasc, telefone, id_curso, status) VALUES
@@ -445,14 +476,14 @@ INSERT INTO aluno (nome, cpf, email, data_nasc, telefone, id_curso, status) VALU
 ('Daniel Luz', '444.444.444-44', 'daniel@email.com', '2002-03-25', '999944444', 1, 'ativo');
 
 -- Testar INSERT bem-sucedido (Turma 1 tem 2 vagas)
+select * from aluno_turma
+select * from turma t join disciplina d on t.id_disciplina = d.id_disciplina join curso c on c.id_curso = d.id_curso
 -- Matriculando Alice na Turma 1
 INSERT INTO aluno_turma (id_aluno, id_turma) VALUES (1, 1);
 -- Matriculando Bruno na Turma 1
 INSERT INTO aluno_turma (id_aluno, id_turma) VALUES (2, 1);
--- Tentando matricular Daniel na turma 3, que é de um curso diferente do dele
-INSERT INTO aluno_turma (id_aluno, id_turma) VALUES (4, 3)
 -- Matricular alice em mais uma turma pra testar
-INSERT INTO aluno_turma (id_aluno, id_turma) VALUES (1, 2)
+INSERT INTO aluno_turma (id_aluno, id_turma) VALUES (1, 2);
 -- Matricular alice em um monte de outras turmas pra impedir ela de passar de 7 turmas
 INSERT INTO aluno_turma (id_aluno, id_turma) 
 VALUES 
