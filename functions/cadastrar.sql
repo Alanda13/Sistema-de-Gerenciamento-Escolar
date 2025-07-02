@@ -67,5 +67,12 @@ SELECT cadastrar(
     ARRAY['nome', 'cpf', 'email', 'data_nasc', 'telefone', 'id_curso', 'status'],
     ARRAY['Lionel Messi', '101.010.666-99', 'leo.c@example.com', '1998-11-11', '89998765432', '1', 'ativo']
 );
+--criando disciplina metodologia cientifica
+SELECT cadastrar(
+    'disciplina',
+    ARRAY['nome_disciplina', 'carga_horaria', 'id_curso'],
+    ARRAY['Metodologia Científica', '60', '1'] -- '1' é o id_curso
+);   
+
 
 select * from aluno;

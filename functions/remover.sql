@@ -43,3 +43,8 @@ BEGIN
     END IF;
 END;
 $$ LANGUAGE plpgsql;
+
+
+--- testando a função remover
+SELECT remover('disciplina', 'id_disciplina', '1');   --tenta remover banco de dados 3 
+SELECT remover('disciplina', 'id_disciplina', '4');  --- remove metodologia cientifica
