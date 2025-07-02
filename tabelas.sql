@@ -419,6 +419,397 @@ CREATE TRIGGER trg_limitar_qtd_turmas_aluno
 BEFORE INSERT OR UPDATE ON aluno_turma
 FOR EACH ROW
 EXECUTE FUNCTION limitar_qtd_turmas_aluno();
+
+-- Função para calcular e atualizar a média das notas de um aluno em uma turma/período
+CREATE OR REPLACE FUNCTION calcular_e_atualizar_media_aluno()
+RETURNS TRIGGER AS $$
+DECLARE
+    v_id_aluno_turma INTEGER;
+    v_id_periodo_letivo INTEGER;
+    v_media_calculada NUMERIC(5,2);
+    v_total_avaliacoes INTEGER;
+BEGIN
+    -- Determina o id_aluno_turma e id_periodo_letivo relevantes para a operação
+    IF TG_OP = 'DELETE' THEN
+        v_id_aluno_turma := OLD.id_aluno_turma;
+        -- Para DELETE, precisamos buscar o id_periodo_letivo da avaliação que foi deletada
+        SELECT av.id_periodo_letivo INTO v_id_periodo_letivo
+        FROM avaliacao av
+        WHERE av.id_avaliacao = OLD.id_avaliacao;
+    ELSE
+        v_id_aluno_turma := NEW.id_aluno_turma;
+        -- Para INSERT/UPDATE, buscamos o id_periodo_letivo da avaliação sendo inserida/atualizada
+        SELECT av.id_periodo_letivo INTO v_id_periodo_letivo
+        FROM avaliacao av
+        WHERE av.id_avaliacao = NEW.id_avaliacao;
+    END IF;
+
+    -- Calcula a média das notas para o aluno_turma no período letivo
+    SELECT COALESCE(AVG(ra.nota_obtida), 0.00), COUNT(ra.id_avaliacao)
+    INTO v_media_calculada, v_total_avaliacoes
+    FROM result_avaliacao ra
+    JOIN avaliacao av ON ra.id_avaliacao = av.id_avaliacao
+    WHERE ra.id_aluno_turma = v_id_aluno_turma
+      AND av.id_periodo_letivo = v_id_periodo_letivo;
+
+    -- Se não houver avaliações para o aluno_turma no período, a média é 0
+    IF v_total_avaliacoes = 0 THEN
+        v_media_calculada := 0.00;
+    END IF;
+
+    -- Atualiza ou insere o registro em result_aluno_periodo
+    INSERT INTO result_aluno_periodo (id_aluno_turma, nota_media, taxa_de_presenca, resultado)
+    VALUES (v_id_aluno_turma, v_media_calculada, 0.00, 'Em Curso')
+    ON CONFLICT (id_aluno_turma) DO UPDATE SET
+        nota_media = EXCLUDED.nota_media; -- Atualiza apenas a nota_media
+
+    RETURN NULL; -- Triggers AFTER não retornam NEW/OLD
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_calcular_media_aluno
+AFTER INSERT OR UPDATE OR DELETE ON result_avaliacao
+FOR EACH ROW
+EXECUTE FUNCTION calcular_e_atualizar_media_aluno();
 		
+-- Função para calcular e atualizar a taxa de presença de um aluno em uma turma/período
+CREATE OR REPLACE FUNCTION calcular_e_atualizar_taxa_presenca_aluno()
+RETURNS TRIGGER AS $$
+DECLARE
+    v_id_aluno_turma INTEGER;
+    v_id_periodo_letivo INTEGER;
+    v_total_horas_presenca NUMERIC(10,2);
+    v_total_horas_aulas_turma NUMERIC(10,2);
+    v_taxa_presenca_calculada NUMERIC(5,2);
+BEGIN
+    -- Determina o id_aluno_turma e id_aula relevantes para a operação
+    IF TG_OP = 'DELETE' THEN
+        v_id_aluno_turma := OLD.id_aluno_turma;
+        -- Para DELETE, precisamos buscar o id_periodo_letivo da aula que foi deletada da presença
+        SELECT a.id_periodo_letivo INTO v_id_periodo_letivo
+        FROM aula a
+        WHERE a.id_aula = OLD.id_aula;
+    ELSE
+        v_id_aluno_turma := NEW.id_aluno_turma;
+        -- Para INSERT, buscamos o id_periodo_letivo da aula que está sendo inserida na presença
+        SELECT a.id_periodo_letivo INTO v_id_periodo_letivo
+        FROM aula a
+        WHERE a.id_aula = NEW.id_aula;
+    END IF;
+
+    -- Calcular o total de horas de presença do aluno na turma para o período letivo
+    SELECT COALESCE(SUM(a.qtd_aulas), 0)
+    INTO v_total_horas_presenca
+    FROM presenca p
+    JOIN aula a ON p.id_aula = a.id_aula
+    WHERE p.id_aluno_turma = v_id_aluno_turma
+      AND a.id_periodo_letivo = v_id_periodo_letivo;
+
+    -- Calcular o total de horas de aulas ministradas para a turma do aluno no período letivo
+    -- Primeiro, precisamos encontrar o id_turma associado ao id_aluno_turma
+    -- E depois, somar todas as qtd_aulas para aquela turma e período.
+    SELECT COALESCE(SUM(a.qtd_aulas), 0)
+    INTO v_total_horas_aulas_turma
+    FROM aula a
+    JOIN professor_turma pt ON a.id_prof_turma = pt.id_prof_turma
+    JOIN aluno_turma at ON pt.id_turma = at.id_turma
+    WHERE at.id_aluno_turma = v_id_aluno_turma -- Filtra para a matrícula específica do aluno
+      AND a.id_periodo_letivo = v_id_periodo_letivo;
+
+    -- Calcular a taxa de presença
+    IF v_total_horas_aulas_turma > 0 THEN
+        v_taxa_presenca_calculada := (v_total_horas_presenca * 100.0) / v_total_horas_aulas_turma;
+    ELSE
+        v_taxa_presenca_calculada := 0.00; -- Se não houver aulas ministradas, a taxa é 0
+    END IF;
+
+    -- Atualiza ou insere o registro em result_aluno_periodo
+    INSERT INTO result_aluno_periodo (id_aluno_turma, nota_media, taxa_de_presenca, resultado)
+    VALUES (v_id_aluno_turma, 0.00, v_taxa_presenca_calculada, 'Em Curso')
+    ON CONFLICT (id_aluno_turma) DO UPDATE SET
+        taxa_de_presenca = EXCLUDED.taxa_de_presenca; -- Atualiza apenas a taxa_de_presenca
+
+    RETURN NULL; -- Triggers AFTER não retornam NEW/OLD
+END;
+$$ LANGUAGE plpgsql;
+
+-- Trigger que dispara a função após INSERT ou DELETE em presenca
+CREATE TRIGGER trg_calcular_taxa_presenca_aluno
+AFTER INSERT OR DELETE ON presenca
+FOR EACH ROW
+EXECUTE FUNCTION calcular_e_atualizar_taxa_presenca_aluno();
 		
+-- Função para finalizar o resultado dos alunos de uma turma específica
+CREATE OR REPLACE FUNCTION finalizar_disciplina_alunos_da_turma(p_id_turma INTEGER)
+RETURNS VOID AS $$
+BEGIN
+    -- Atualiza o campo 'resultado' na tabela result_aluno_periodo para os alunos
+    -- da turma especificada, com base nas regras de nota_media e taxa_de_presenca.
+    UPDATE result_aluno_periodo rap
+    SET resultado = CASE
+        WHEN rap.nota_media < 7.0 OR rap.taxa_de_presenca < 75.0 THEN 'Reprovado'
+        ELSE 'Aprovado'
+    END
+    FROM aluno_turma at
+    WHERE rap.id_aluno_turma = at.id_aluno_turma
+      AND at.id_turma = p_id_turma
+      AND rap.resultado = 'Em Curso'; -- Opcional: só atualiza quem ainda não foi finalizado
+
+    RAISE NOTICE 'Resultados finais dos alunos da turma ID % que estavam "Em Curso" foram atualizados.', p_id_turma;
+
+END;
+$$ LANGUAGE plpgsql;
 -----------------------------------/\ TRIGGERS E FUNÇÕES /\------------------------------------------
+----------------------------------------\/ INSERTS \/------------------------------------------------
+-- Curso
+INSERT INTO curso (nome, carga_horaria) VALUES ('Engenharia de Software', 3600); -- id_curso = 1
+
+-- Disciplina
+INSERT INTO disciplina (nome_disciplina, carga_horaria, id_curso) VALUES ('Banco de Dados II', 80, 1); -- id_disciplina = 1
+
+-- Período Letivo
+INSERT INTO periodo_letivo (ano, semestre, dt_inicio, dt_fim) VALUES (2025, 2, '2025-08-01', '2025-12-15'); -- id_periodo_letivo = 1
+
+-- Professor
+INSERT INTO professor (nome, cpf, telefone) VALUES ('Dr. Smith', '123.456.789-00', '987654321'); -- id_professor = 1
+
+-- Função
+INSERT INTO funcao (funcao) VALUES ('Professor'); -- id_funcao = 1
+
+-- Vínculo Professor-Função
+INSERT INTO func_prof (id_professor, id_funcao, dt_entrada) VALUES (1, 1, '2025-01-01');
+
+-- Turma (Disciplina 1, Período 1)
+INSERT INTO turma (sala, horario_aula, qtd_vagas, id_disciplina, id_periodo_letivo)
+VALUES ('Lab 201', 5, 20, 1, 1); -- id_turma = 1
+
+-- Vínculo Professor-Turma
+INSERT INTO professor_turma (id_professor, id_turma) VALUES (1, 1); -- id_prof_turma = 1
+
+-- Aluno
+INSERT INTO aluno (nome, cpf, email, data_nasc, telefone, id_curso, status)
+VALUES ('Ana Maria', '000.000.000-00', 'ana@email.com', '2003-03-01', '999900000', 1, 'ativo'); -- id_aluno = 1
+
+-- Matrícula do Aluno na Turma
+INSERT INTO aluno_turma (id_aluno, id_turma) VALUES (1, 1); -- id_aluno_turma = 1
+
+-- =================================================================================================
+-- TESTES PARA A FUNÇÃO DE TAXA DE PRESENÇA (trg_calcular_taxa_presenca_aluno)
+-- =================================================================================================
+
+-- Inserir Aulas para a Turma (Total de Horas de Aula Esperadas)
+-- Aula 1: 2 horas
+INSERT INTO aula (id_periodo_letivo, id_prof_turma, assunto, data, qtd_aulas)
+VALUES (1, 1, 'Introdução a SQL', '2025-08-05', 2); -- id_aula = 1
+
+-- Aula 2: 3 horas
+INSERT INTO aula (id_periodo_letivo, id_prof_turma, assunto, data, qtd_aulas)
+VALUES (1, 1, 'Modelagem de Dados', '2025-08-12', 3); -- id_aula = 2
+
+-- Verificar o total de horas de aula para a turma 1 no período 1 (esperado: 5 horas)
+SELECT SUM(a.qtd_aulas) FROM aula a JOIN professor_turma pt ON a.id_prof_turma = pt.id_prof_turma WHERE pt.id_turma = 1 AND a.id_periodo_letivo = 1;
+
+-- Inserir Presenças para o Aluno na Turma (Dispara o trigger de taxa de presença)
+-- Presença na Aula 1 (2 horas)
+INSERT INTO presenca (id_aula, id_aluno_turma) VALUES (1, 1); -- Taxa de presença deve ser (2 / 5) * 100 = 40.00%
+
+-- Verificar result_aluno_periodo após a primeira presença
+SELECT id_aluno_turma, nota_media, taxa_de_presenca, resultado
+FROM result_aluno_periodo
+WHERE id_aluno_turma = 1;
+
+-- Presença na Aula 2 (3 horas)
+INSERT INTO presenca (id_aula, id_aluno_turma) VALUES (2, 1); -- Taxa de presença deve ser (2+3 / 5) * 100 = 100.00%
+
+-- Verificar result_aluno_periodo após a segunda presença
+SELECT id_aluno_turma, nota_media, taxa_de_presenca, resultado
+FROM result_aluno_periodo
+WHERE id_aluno_turma = 1;
+
+-- =================================================================================================
+-- TESTES PARA A FUNÇÃO DE CÁLCULO DE MÉDIA (trg_calcular_media_aluno)
+-- =================================================================================================
+
+-- Inserir uma Avaliação para a Turma (necessário para result_avaliacao)
+-- Avaliação de Banco de Dados II, lançada pelo Dr. Smith para a Turma 1 no Período 1
+INSERT INTO avaliacao (descricao, data, id_prof_turma, id_periodo_letivo)
+VALUES ('Prova 1 - SQL', '2025-09-01', 1, 1); -- id_avaliacao = 1
+
+-- Inserir a primeira nota para o Aluno na Avaliação (Dispara o trigger de média)
+INSERT INTO result_avaliacao (id_avaliacao, id_aluno_turma, nota_obtida)
+VALUES (1, 1, 7.5); -- Média deve ser 7.50
+
+-- Verificar result_aluno_periodo após a primeira nota
+SELECT id_aluno_turma, nota_media, taxa_de_presenca, resultado
+FROM result_aluno_periodo
+WHERE id_aluno_turma = 1;
+
+-- Inserir outra Avaliação
+INSERT INTO avaliacao (descricao, data, id_prof_turma, id_periodo_letivo)
+VALUES ('Trabalho Final', '2025-11-10', 1, 1); -- id_avaliacao = 2
+
+-- Inserir a segunda nota para o Aluno (Dispara o trigger de média novamente)
+INSERT INTO result_avaliacao (id_avaliacao, id_aluno_turma, nota_obtida)
+VALUES (2, 1, 9.0); -- Média deve ser (7.5 + 9.0) / 2 = 8.25
+
+-- Verificar result_aluno_periodo após a segunda nota
+SELECT id_aluno_turma, nota_media, taxa_de_presenca, resultado
+FROM result_aluno_periodo
+WHERE id_aluno_turma = 1;
+
+-- Testar DELETE de nota (Dispara o trigger de média)
+DELETE FROM result_avaliacao WHERE id_avaliacao = 1 AND id_aluno_turma = 1; -- Média deve voltar para 9.00
+
+-- Verificar result_aluno_periodo após o DELETE
+SELECT id_aluno_turma, nota_media, taxa_de_presenca, resultado
+FROM result_aluno_periodo
+WHERE id_aluno_turma = 1;
+
+-- Testar DELETE de presença (Dispara o trigger de taxa de presença)
+DELETE FROM presenca WHERE id_aula = 1 AND id_aluno_turma = 1; -- Taxa de presença deve ser (3 / 5) * 100 = 60.00%
+
+-- Verificar result_aluno_periodo após o DELETE de presença
+SELECT id_aluno_turma, nota_media, taxa_de_presenca, resultado
+FROM result_aluno_periodo
+WHERE id_aluno_turma = 1;
+
+-- =================================================================================================
+-- FUNÇÃO ATUALIZADA: FINALIZAR DISCIPLINA DE ALUNOS DE UMA TURMA ESPECÍFICA
+-- =================================================================================================
+
+-- Função para finalizar o resultado dos alunos de uma turma específica
+CREATE OR REPLACE FUNCTION finalizar_disciplina_alunos_da_turma(p_id_turma INTEGER)
+RETURNS VOID AS $$
+BEGIN
+    -- Atualiza o campo 'resultado' na tabela result_aluno_periodo para os alunos
+    -- da turma especificada, com base nas regras de nota_media e taxa_de_presenca.
+    UPDATE result_aluno_periodo rap
+    SET resultado = CASE
+        WHEN rap.nota_media < 7.0 OR rap.taxa_de_presenca < 75.0 THEN 'Reprovado'
+        ELSE 'Aprovado'
+    END
+    FROM aluno_turma at
+    WHERE rap.id_aluno_turma = at.id_aluno_turma
+      AND at.id_turma = p_id_turma
+      AND rap.resultado = 'Em Curso'; -- Opcional: só atualiza quem ainda não foi finalizado
+
+    RAISE NOTICE 'Resultados finais dos alunos da turma ID % que estavam "Em Curso" foram atualizados.', p_id_turma;
+
+END;
+$$ LANGUAGE plpgsql;
+
+-- =================================================================================================
+-- TESTES PARA A FUNÇÃO DE FINALIZAÇÃO DA DISCIPLINA (POR TURMA)
+-- =================================================================================================
+
+-- Cenário 1: Aluno com média e presença para aprovação (Ana Maria, id_aluno_turma = 1)
+-- Média atual: 9.00, Taxa de Presença atual: 60.00% (reprovado por presença)
+-- Vamos ajustar a presença para que ela seja aprovada na próxima etapa
+DELETE FROM presenca WHERE id_aula = 2 AND id_aluno_turma = 1; -- Remove a aula 2 (3h)
+-- Taxa de presença deve ser (0 / 5) * 100 = 0%
+-- Inserir novamente a presença da Aula 2 para ter 100%
+INSERT INTO presenca (id_aula, id_aluno_turma) VALUES (2, 1); -- Taxa de presença deve ser (2+3 / 5) * 100 = 100.00%
+-- Verificar estado antes de finalizar
+SELECT id_aluno_turma, nota_media, taxa_de_presenca, resultado FROM result_aluno_periodo WHERE id_aluno_turma = 1;
+
+-- Cenário 2: Aluno com média baixa (reprovado por média)
+-- Criar um novo aluno e matrícula para teste
+INSERT INTO aluno (nome, cpf, email, data_nasc, telefone, id_curso, status)
+VALUES ('Pedro Silva', '111.222.333-44', 'pedro@email.com', '2004-01-01', '999911111', 1, 'ativo'); -- id_aluno = 2
+INSERT INTO aluno_turma (id_aluno, id_turma) VALUES (2, 1); -- id_aluno_turma = 2
+
+-- Inserir notas para Pedro (média baixa)
+INSERT INTO result_avaliacao (id_avaliacao, id_aluno_turma, nota_obtida) VALUES (1, 2, 5.0); -- Média 5.0
+INSERT INTO result_avaliacao (id_avaliacao, id_aluno_turma, nota_obtida) VALUES (2, 2, 6.0); -- Média (5.0+6.0)/2 = 5.5
+
+-- Inserir presenças para Pedro (taxa alta)
+INSERT INTO presenca (id_aula, id_aluno_turma) VALUES (1, 2);
+INSERT INTO presenca (id_aula, id_aluno_turma) VALUES (2, 2);
+
+-- Verificar estado antes de finalizar
+SELECT id_aluno_turma, nota_media, taxa_de_presenca, resultado FROM result_aluno_periodo WHERE id_aluno_turma = 2;
+
+-- Cenário 3: Aluno com presença baixa (reprovado por presença)
+-- Criar outro aluno e matrícula para teste
+INSERT INTO aluno (nome, cpf, email, data_nasc, telefone, id_curso, status)
+VALUES ('Mariana Souza', '555.666.777-88', 'mariana@email.com', '2003-05-10', '999922222', 1, 'ativo'); -- id_aluno = 3
+INSERT INTO aluno_turma (id_aluno, id_turma) VALUES (3, 1); -- id_aluno_turma = 3
+
+-- Inserir notas para Mariana (média alta)
+INSERT INTO result_avaliacao (id_avaliacao, id_aluno_turma, nota_obtida) VALUES (1, 3, 8.0);
+INSERT INTO result_avaliacao (id_avaliacao, id_aluno_turma, nota_obtida) VALUES (2, 3, 7.0); -- Média (8.0+7.0)/2 = 7.5
+
+-- Inserir apenas uma presença para Mariana (taxa baixa)
+INSERT INTO presenca (id_aula, id_aluno_turma) VALUES (1, 3); -- Apenas 2 horas de 5 totais = 40%
+
+-- Verificar estado antes de finalizar
+SELECT id_aluno_turma, nota_media, taxa_de_presenca, resultado FROM result_aluno_periodo WHERE id_aluno_turma = 3;
+
+-- Chamar a função para finalizar a disciplina para TODOS os alunos da TURMA 1
+SELECT finalizar_disciplina_alunos_da_turma(1);
+
+-- Verificar os resultados finais de TODOS os alunos (deve refletir as mudanças para id_aluno_turma 1, 2 e 3)
+SELECT id_aluno_turma, nota_media, taxa_de_presenca, resultado
+FROM result_aluno_periodo
+WHERE id_aluno_turma IN (1, 2, 3)
+ORDER BY id_aluno_turma;
+
+-- =================================================================================================
+-- Cenário 4: Aluno APROVADO (Média >= 7.0 e Presença >= 75.0%)
+-- =================================================================================================
+-- Criar um novo aluno e matrícula para teste
+INSERT INTO aluno (nome, cpf, email, data_nasc, telefone, id_curso, status)
+VALUES ('Joao Santos', '123.123.123-12', 'joao@email.com', '2002-07-20', '999944444', 1, 'ativo'); -- id_aluno = 4
+INSERT INTO aluno_turma (id_aluno, id_turma) VALUES (4, 1); -- id_aluno_turma = 4
+
+-- Inserir notas para Joao (média alta)
+INSERT INTO result_avaliacao (id_avaliacao, id_aluno_turma, nota_obtida) VALUES (1, 4, 8.5);
+INSERT INTO result_avaliacao (id_avaliacao, id_aluno_turma, nota_obtida) VALUES (2, 4, 7.5); -- Média (8.5+7.5)/2 = 8.0
+
+-- Inserir presenças para Joao (taxa alta)
+-- Aula 1 (2h) e Aula 2 (3h) totalizam 5h de aula.
+-- Para >= 75% de presença, precisa de 5 * 0.75 = 3.75 horas.
+-- Vamos dar presença nas duas aulas para 100% (5h).
+INSERT INTO presenca (id_aula, id_aluno_turma) VALUES (1, 4);
+INSERT INTO presenca (id_aula, id_aluno_turma) VALUES (2, 4);
+
+-- Verificar estado antes de finalizar
+SELECT id_aluno_turma, nota_media, taxa_de_presenca, resultado FROM result_aluno_periodo WHERE id_aluno_turma = 4;
+
+-- Chamar a função para finalizar a disciplina para a TURMA 1 (incluirá Joao)
+SELECT finalizar_disciplina_alunos_da_turma(1);
+
+-- Verificar o resultado final de Joao (Esperado: Aprovado)
+SELECT id_aluno_turma, nota_media, taxa_de_presenca, resultado
+FROM result_aluno_periodo;
+----------------------------------------/\ INSERTS /\------------------------------------------------
+-- -- Limpar dados de todas as tabelas (em ordem inversa de dependência)
+-- DELETE FROM result_avaliacao;
+-- DELETE FROM presenca;
+-- DELETE FROM result_aluno_periodo;
+-- DELETE FROM aula;
+-- DELETE FROM avaliacao;
+-- DELETE FROM professor_turma;
+-- DELETE FROM func_prof;
+-- DELETE FROM aluno_turma;
+-- DELETE FROM turma;
+-- DELETE FROM disciplina;
+-- DELETE FROM aluno;
+-- DELETE FROM professor;
+-- DELETE FROM funcao;
+-- DELETE FROM periodo_letivo;
+-- DELETE FROM curso;
+
+-- -- Reiniciar contadores (SERIALS) de todas as tabelas
+-- ALTER SEQUENCE curso_id_curso_seq RESTART WITH 1;
+-- ALTER SEQUENCE disciplina_id_disciplina_seq RESTART WITH 1;
+-- ALTER SEQUENCE aluno_id_aluno_seq RESTART WITH 1;
+-- ALTER SEQUENCE periodo_letivo_id_periodo_letivo_seq RESTART WITH 1;
+-- ALTER SEQUENCE turma_id_turma_seq RESTART WITH 1;
+-- ALTER SEQUENCE aluno_turma_id_aluno_turma_seq RESTART WITH 1;
+-- ALTER SEQUENCE funcao_id_funcao_seq RESTART WITH 1;
+-- ALTER SEQUENCE professor_id_professor_seq RESTART WITH 1;
+-- ALTER SEQUENCE professor_turma_id_prof_turma_seq RESTART WITH 1;
+-- ALTER SEQUENCE avaliacao_id_avaliacao_seq RESTART WITH 1;
+-- ALTER SEQUENCE aula_id_aula_seq RESTART WITH 1;
+-- ALTER SEQUENCE result_aluno_periodo_id_result_aluno_periodo_seq RESTART WITH 1;
