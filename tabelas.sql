@@ -1,11 +1,19 @@
--- Tabela CURSO (inalterada)
 CREATE TABLE curso (
     id_curso SERIAL PRIMARY KEY,
     nome VARCHAR(100) NOT NULL,
     carga_horaria INTEGER NOT NULL
 );
 
--- Tabela DISCIPLINA (inalterada, exceto pelo trigger de auto-requisito)
+CREATE TABLE registro_relatorios (
+    id_registro SERIAL PRIMARY KEY,
+    nome_tabela VARCHAR(100) NOT NULL,
+    tipo_operacao VARCHAR(10) NOT NULL,
+    data_hora_registro TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    dados_antigos JSONB,
+    dados_novos JSONB,
+    usuario_bd VARCHAR(50) DEFAULT CURRENT_USER
+);
+
 CREATE TABLE disciplina (
     id_disciplina SERIAL PRIMARY KEY,
     nome_disciplina VARCHAR(100) NOT NULL,
@@ -14,7 +22,6 @@ CREATE TABLE disciplina (
     id_pre_requisito INTEGER REFERENCES disciplina(id_disciplina)
 );
 
--- Tabela ALUNO (inalterada)
 CREATE TABLE aluno (
     id_aluno SERIAL PRIMARY KEY,
     nome VARCHAR(100) NOT NULL,
@@ -26,7 +33,6 @@ CREATE TABLE aluno (
     status VARCHAR(10) CHECK (status IN ('ativo', 'inativo')) DEFAULT 'ativo'
 );
 
--- Tabela PERIODO_LETIVO (inalterada)
 CREATE TABLE periodo_letivo (
     id_periodo_letivo SERIAL PRIMARY KEY,
     ano INTEGER NOT NULL,
@@ -35,32 +41,28 @@ CREATE TABLE periodo_letivo (
     dt_fim DATE NOT NULL
 );
 
--- Tabela TURMA (inalterada)
 CREATE TABLE turma (
     id_turma SERIAL PRIMARY KEY,
     sala VARCHAR(50),
-    horario_aula INTEGER NOT NULL, -- horas por semana
+    horario_aula INTEGER NOT NULL,
     qtd_vagas INTEGER NOT NULL,
     id_disciplina INTEGER NOT NULL REFERENCES disciplina(id_disciplina),
     id_periodo_letivo INTEGER NOT NULL REFERENCES periodo_letivo(id_periodo_letivo)
 );
 
--- Tabela ALUNO_TURMA (MODIFICADA: Adiciona id_aluno_turma como PK, e PK antiga vira UNIQUE)
--- Representa a matrícula de um aluno em uma turma específica.
+
 CREATE TABLE aluno_turma (
-    id_aluno_turma SERIAL PRIMARY KEY, -- Novo ID para identificar a matrícula única
+    id_aluno_turma SERIAL PRIMARY KEY,
     id_aluno INTEGER NOT NULL REFERENCES aluno(id_aluno),
     id_turma INTEGER NOT NULL REFERENCES turma(id_turma),
-    UNIQUE (id_aluno, id_turma) -- Garante que um aluno não se matricule duas vezes na mesma turma
+    UNIQUE (id_aluno, id_turma)
 );
 
--- Tabela FUNCAO (inalterada)
 CREATE TABLE funcao (
     id_funcao SERIAL PRIMARY KEY,
     funcao VARCHAR(100) NOT NULL
 );
 
--- Tabela PROFESSOR (inalterada)
 CREATE TABLE professor (
     id_professor SERIAL PRIMARY KEY,
     nome VARCHAR(100) NOT NULL,
@@ -68,7 +70,6 @@ CREATE TABLE professor (
     telefone VARCHAR(20)
 );
 
--- Tabela FUNC_PROF (inalterada)
 CREATE TABLE func_prof (
     id_professor INTEGER NOT NULL REFERENCES professor(id_professor),
     id_funcao INTEGER NOT NULL REFERENCES funcao(id_funcao),
@@ -77,63 +78,169 @@ CREATE TABLE func_prof (
     PRIMARY KEY (id_professor, id_funcao)
 );
 
--- Tabela PROFESSOR_TURMA (inalterada)
 CREATE TABLE professor_turma (
     id_prof_turma SERIAL PRIMARY KEY,
     id_professor INTEGER NOT NULL REFERENCES professor(id_professor),
     id_turma INTEGER NOT NULL REFERENCES turma(id_turma)
 );
 
--- Tabela AVALIACAO (MODIFICADA: Adiciona id_periodo_letivo)
--- Representa uma avaliação lançada por um professor para uma turma em um período.
 CREATE TABLE avaliacao (
     id_avaliacao SERIAL PRIMARY KEY,
     descricao TEXT NOT NULL,
     data DATE NOT NULL,
     id_prof_turma INTEGER NOT NULL REFERENCES professor_turma(id_prof_turma),
-    id_periodo_letivo INTEGER NOT NULL REFERENCES periodo_letivo(id_periodo_letivo) -- Novo campo
+    id_periodo_letivo INTEGER NOT NULL REFERENCES periodo_letivo(id_periodo_letivo)
 );
 
--- Tabela RESULT_AVALIACAO (MODIFICADA: id_aluno_turma substitui id_aluno)
--- Armazena a nota obtida por um aluno em uma avaliação específica.
 CREATE TABLE result_avaliacao (
     id_avaliacao INTEGER NOT NULL REFERENCES avaliacao(id_avaliacao),
-    id_aluno_turma INTEGER NOT NULL REFERENCES aluno_turma(id_aluno_turma), -- Referencia a matrícula específica
+    id_aluno_turma INTEGER NOT NULL REFERENCES aluno_turma(id_aluno_turma),
     nota_obtida NUMERIC(5,2),
     PRIMARY KEY (id_avaliacao, id_aluno_turma)
 );
 
--- NOVA TABELA: AULA
--- Registra cada sessão de aula para uma turma específica com um professor em um período.
 CREATE TABLE aula (
     id_aula SERIAL PRIMARY KEY,
     id_periodo_letivo INTEGER NOT NULL REFERENCES periodo_letivo(id_periodo_letivo),
-    id_prof_turma INTEGER NOT NULL REFERENCES professor_turma(id_prof_turma), -- Professor que lecionou essa aula
+    id_prof_turma INTEGER NOT NULL REFERENCES professor_turma(id_prof_turma),
     assunto VARCHAR(255),
     data DATE NOT NULL,
-    qtd_aulas INTEGER NOT NULL CHECK (qtd_aulas > 0) -- Horas desta sessão de aula (ex: 1 para 1h de aula)
+    qtd_aulas INTEGER NOT NULL CHECK (qtd_aulas > 0)
 );
 
--- NOVA TABELA: PRESENCA
--- Relaciona um aluno em uma turma (id_aluno_turma) a uma aula específica (id_aula).
 CREATE TABLE presenca (
     id_aula INTEGER NOT NULL REFERENCES aula(id_aula),
     id_aluno_turma INTEGER NOT NULL REFERENCES aluno_turma(id_aluno_turma),
-    PRIMARY KEY (id_aula, id_aluno_turma) -- Garante uma única presença por aluno_turma por aula
+    PRIMARY KEY (id_aula, id_aluno_turma)
 );
 
--- NOVA TABELA: RESULT_ALUNO_PERIODO
--- Armazena os resultados consolidados de um aluno para uma matrícula em uma turma/período.
 CREATE TABLE result_aluno_periodo (
     id_result_aluno_periodo SERIAL PRIMARY KEY,
-    id_aluno_turma INTEGER NOT NULL UNIQUE REFERENCES aluno_turma(id_aluno_turma), -- Um resultado por matrícula
-    nota_media NUMERIC(5,2) DEFAULT 0.00, -- Média das notas do aluno naquela turma/período
-    taxa_de_presenca NUMERIC(5,2) DEFAULT 0.00, -- Percentual de presença do aluno naquela turma/período
-    resultado VARCHAR(20) CHECK (resultado IN ('Aprovado', 'Reprovado', 'Em Curso')) DEFAULT 'Em Curso' -- Status final
+    id_aluno_turma INTEGER NOT NULL UNIQUE REFERENCES aluno_turma(id_aluno_turma),
+    nota_media NUMERIC(5,2) DEFAULT 0.00,
+    taxa_de_presenca NUMERIC(5,2) DEFAULT 0.00,
+    resultado VARCHAR(20) CHECK (resultado IN ('Aprovado', 'Reprovado', 'Em Curso')) DEFAULT 'Em Curso'
 );
 
 
+----------------------------------\/RELATORIO\/----------------------------------
+CREATE OR REPLACE FUNCTION registrar_operacao_relatorio()
+RETURNS TRIGGER AS $$
+DECLARE
+    v_old_data JSONB;
+    v_new_data JSONB;
+BEGIN
+    -- Converte OLD e NEW para JSONB, se existirem
+    IF TG_OP = 'DELETE' THEN
+        v_old_data := to_jsonb(OLD);
+        v_new_data := NULL;
+    ELSIF TG_OP = 'INSERT' THEN
+        v_old_data := NULL;
+        v_new_data := to_jsonb(NEW);
+    ELSIF TG_OP = 'UPDATE' THEN
+        v_old_data := to_jsonb(OLD);
+        v_new_data := to_jsonb(NEW);
+    END IF;
+
+    INSERT INTO registro_relatorios (
+        nome_tabela,
+        tipo_operacao,
+        data_hora_registro,
+        dados_antigos,
+        dados_novos,
+        usuario_bd
+    )
+    VALUES (
+        TG_TABLE_NAME,
+        TG_OP,
+        NOW(),
+        v_old_data,
+        v_new_data,
+        CURRENT_USER
+    );
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Trigger para a tabela CURSO
+CREATE TRIGGER trg_log_curso
+AFTER INSERT OR UPDATE OR DELETE ON curso
+FOR EACH ROW EXECUTE FUNCTION registrar_operacao_relatorio();
+
+-- Trigger para a tabela DISCIPLINA
+CREATE TRIGGER trg_log_disciplina
+AFTER INSERT OR UPDATE OR DELETE ON disciplina
+FOR EACH ROW EXECUTE FUNCTION registrar_operacao_relatorio();
+
+-- Trigger para a tabela ALUNO
+CREATE TRIGGER trg_log_aluno
+AFTER INSERT OR UPDATE OR DELETE ON aluno
+FOR EACH ROW EXECUTE FUNCTION registrar_operacao_relatorio();
+
+-- Trigger para a tabela PERIODO_LETIVO
+CREATE TRIGGER trg_log_periodo_letivo
+AFTER INSERT OR UPDATE OR DELETE ON periodo_letivo
+FOR EACH ROW EXECUTE FUNCTION registrar_operacao_relatorio();
+
+-- Trigger para a tabela TURMA
+CREATE TRIGGER trg_log_turma
+AFTER INSERT OR UPDATE OR DELETE ON turma
+FOR EACH ROW EXECUTE FUNCTION registrar_operacao_relatorio();
+
+-- Trigger para a tabela ALUNO_TURMA
+CREATE TRIGGER trg_log_aluno_turma
+AFTER INSERT OR UPDATE OR DELETE ON aluno_turma
+FOR EACH ROW EXECUTE FUNCTION registrar_operacao_relatorio();
+
+-- Trigger para a tabela FUNCAO
+CREATE TRIGGER trg_log_funcao
+AFTER INSERT OR UPDATE OR DELETE ON funcao
+FOR EACH ROW EXECUTE FUNCTION registrar_operacao_relatorio();
+
+-- Trigger para a tabela PROFESSOR
+CREATE TRIGGER trg_log_professor
+AFTER INSERT OR UPDATE OR DELETE ON professor
+FOR EACH ROW EXECUTE FUNCTION registrar_operacao_relatorio();
+
+-- Trigger para a tabela FUNC_PROF
+CREATE TRIGGER trg_log_func_prof
+AFTER INSERT OR UPDATE OR DELETE ON func_prof
+FOR EACH ROW EXECUTE FUNCTION registrar_operacao_relatorio();
+
+-- Trigger para a tabela PROFESSOR_TURMA
+CREATE TRIGGER trg_log_professor_turma
+AFTER INSERT OR UPDATE OR DELETE ON professor_turma
+FOR EACH ROW EXECUTE FUNCTION registrar_operacao_relatorio();
+
+-- Trigger para a tabela AVALIACAO
+CREATE TRIGGER trg_log_avaliacao
+AFTER INSERT OR UPDATE OR DELETE ON avaliacao
+FOR EACH ROW EXECUTE FUNCTION registrar_operacao_relatorio();
+
+-- Trigger para a tabela RESULT_AVALIACAO
+CREATE TRIGGER trg_log_result_avaliacao
+AFTER INSERT OR UPDATE OR DELETE ON result_avaliacao
+FOR EACH ROW EXECUTE FUNCTION registrar_operacao_relatorio();
+
+-- Trigger para a tabela AULA
+CREATE TRIGGER trg_log_aula
+AFTER INSERT OR UPDATE OR DELETE ON aula
+FOR EACH ROW EXECUTE FUNCTION registrar_operacao_relatorio();
+
+-- Trigger para a tabela PRESENCA
+CREATE TRIGGER trg_log_presenca
+AFTER INSERT OR UPDATE OR DELETE ON presenca
+FOR EACH ROW EXECUTE FUNCTION registrar_operacao_relatorio();
+
+-- Trigger para a tabela RESULT_ALUNO_PERIODO
+CREATE TRIGGER trg_log_result_aluno_periodo
+AFTER INSERT OR UPDATE OR DELETE ON result_aluno_periodo
+FOR EACH ROW EXECUTE FUNCTION registrar_operacao_relatorio();
+
+----------------------------------/\ RELATORIO /\----------------------------------
 ----------------------------------\/ TRIGGERS E FUNÇÕES \/---------------------------------------------
+
 -- Função que valida o pré-requisito
 CREATE OR REPLACE FUNCTION evitar_autopre_requisito()
 RETURNS TRIGGER AS $$
@@ -782,6 +889,7 @@ SELECT finalizar_disciplina_alunos_da_turma(1);
 -- Verificar o resultado final de Joao (Esperado: Aprovado)
 SELECT id_aluno_turma, nota_media, taxa_de_presenca, resultado
 FROM result_aluno_periodo;
+SELECT * FROM registro_relatorios
 ----------------------------------------/\ INSERTS /\------------------------------------------------
 -- -- Limpar dados de todas as tabelas (em ordem inversa de dependência)
 -- DELETE FROM result_avaliacao;
@@ -799,6 +907,7 @@ FROM result_aluno_periodo;
 -- DELETE FROM funcao;
 -- DELETE FROM periodo_letivo;
 -- DELETE FROM curso;
+-- DELETE FROM REGISTRO_RELATORIOS;
 
 -- -- Reiniciar contadores (SERIALS) de todas as tabelas
 -- ALTER SEQUENCE curso_id_curso_seq RESTART WITH 1;
