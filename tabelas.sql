@@ -457,7 +457,7 @@ BEGIN
 	WHERE fp.id_professor = NEW.id_professor;
 	
 	
-	IF (qtd_funcoes_prof > 2) THEN
+	IF (qtd_funcoes_prof > 1) THEN
 		RAISE EXCEPTION 'Esse professor atingiu o limite de funções (Máximo: 2). Funções atuais: %', qtd_funcoes_prof;
 	END IF;
 	RETURN NEW;
