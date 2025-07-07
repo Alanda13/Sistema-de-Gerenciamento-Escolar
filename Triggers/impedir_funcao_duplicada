@@ -1,0 +1,15 @@
+CREATE OR REPLACE FUNCTION impedir_funcao_duplicada()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- Verifica se já existe uma função com o mesmo nome (case-insensitive)
+    IF EXISTS (SELECT 1 FROM funcao WHERE LOWER(funcao) = LOWER(NEW.funcao)) THEN
+        RAISE EXCEPTION 'Erro: Já existe uma função com o nome "%". Nomes de função devem ser únicos (ignorando maiúsculas/minúsculas).', NEW.funcao;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_impedir_funcao_duplicada
+BEFORE INSERT ON funcao
+FOR EACH ROW
+EXECUTE FUNCTION impedir_funcao_duplicada();
