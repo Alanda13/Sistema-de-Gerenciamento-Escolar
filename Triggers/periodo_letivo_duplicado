@@ -1,0 +1,3 @@
+ALTER TABLE periodo_letivo
+ADD CONSTRAINT uq_ano_semestre_periodo
+UNIQUE (ano, semestre);
