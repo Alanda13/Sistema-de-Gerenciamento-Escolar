@@ -1,0 +1,3 @@
+ALTER TABLE periodo_letivo
+ADD CONSTRAINT chk_dt_fim_maior_dt_inicio
+CHECK (dt_fim >= dt_inicio);
