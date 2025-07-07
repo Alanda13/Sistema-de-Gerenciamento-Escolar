@@ -1,0 +1,3 @@
+ALTER TABLE aula
+ADD CONSTRAINT uq_periodo_profturma_data_aula
+UNIQUE (id_periodo_letivo, id_prof_turma, data);
