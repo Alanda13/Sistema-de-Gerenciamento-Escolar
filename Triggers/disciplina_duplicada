@@ -1,0 +1,3 @@
+ALTER TABLE disciplina
+ADD CONSTRAINT uq_nome_disciplina_curso
+UNIQUE (nome_disciplina, id_curso);
