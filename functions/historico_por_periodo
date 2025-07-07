@@ -1,0 +1,43 @@
+CREATE OR REPLACE FUNCTION historico_por_periodo( 
+    p_id_aluno INTEGER,
+    p_id_periodo_letivo INTEGER
+) RETURNS TABLE (
+    nome_disciplina VARCHAR(100),
+    notas_individuais TEXT, -- coluna para as notas de cada avaliação (ex: "8.5, 7.0, 9.0")
+    nota_media_final NUMERIC(5,2)
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT
+        dis.nome_disciplina AS nome_disciplina,
+        -- Concatena todas as notas obtidas nas avaliações para esta disciplina/aluno/período
+        -- Ordena as notas pela data da avaliação para um histórico mais claro
+        COALESCE(STRING_AGG(ra.nota_obtida::TEXT, ', ' ORDER BY av.data), 'N/A') AS notas_individuais,
+        COALESCE(rap.nota_media, 0.00) AS nota_media_final -- Nota média final da disciplina no período
+    FROM
+        aluno a
+    JOIN
+        aluno_turma at ON a.id_aluno = at.id_aluno -- Liga o aluno às turmas em que está matriculado
+    JOIN
+        turma t ON at.id_turma = t.id_turma -- Obtém detalhes da turma
+    JOIN
+        disciplina dis ON t.id_disciplina = dis.id_disciplina -- Obtém o nome da disciplina
+    JOIN
+        periodo_letivo pl ON t.id_periodo_letivo = pl.id_periodo_letivo -- Obtém detalhes do período letivo
+    LEFT JOIN
+        result_aluno_periodo rap ON at.id_aluno_turma = rap.id_aluno_turma -- Liga para obter a nota média final
+    LEFT JOIN
+        professor_turma pt ON t.id_turma = pt.id_turma -- Liga turma ao professor_turma para encontrar avaliações
+    LEFT JOIN
+        avaliacao av ON pt.id_prof_turma = av.id_prof_turma AND pl.id_periodo_letivo = av.id_periodo_letivo -- Liga avaliações ao professor_turma e período
+    LEFT JOIN
+        result_avaliacao ra ON av.id_avaliacao = ra.id_avaliacao AND at.id_aluno_turma = ra.id_aluno_turma -- Liga resultados de avaliação ao aluno_turma e avaliação
+    WHERE
+        a.id_aluno = p_id_aluno
+        AND pl.id_periodo_letivo = p_id_periodo_letivo -- Filtra estritamente pelo período letivo fornecido
+    GROUP BY
+        dis.nome_disciplina, rap.nota_media -- Agrupa para que STRING_AGG e COALESCE funcionem corretamente
+    ORDER BY
+        dis.nome_disciplina; -- Ordena as disciplinas por nome
+END;
+$$ LANGUAGE plpgsql;

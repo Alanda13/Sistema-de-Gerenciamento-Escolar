@@ -42,3 +42,14 @@ EXCEPTION
         RETURN 'Erro ao atualizar registro na tabela ' || p_tabela || ': ' || SQLERRM || '. SQL: ' || v_sql;
 END;
 $$ LANGUAGE plpgsql;
+
+------testanto função de alterar
+-- Teste 1: Alterar o E-mail de um Aluno
+SELECT alterar(
+    'aluno',                        -- Tabela
+    'id_aluno', '1',                -- Condição WHERE: id_aluno = 1
+    ARRAY['email'],                 -- Colunas a serem atualizadas
+    ARRAY['alice.silva.novo@ifpi.edu.br'] -- Novos valores correspondentes
+);
+
+select * from aluno;

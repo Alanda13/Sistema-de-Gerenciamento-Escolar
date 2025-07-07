@@ -1,0 +1,24 @@
+CREATE OR REPLACE FUNCTION disciplinas_e_pre_requisitos()
+RETURNS TABLE (
+    nome_disciplina VARCHAR(100),
+    carga_horaria_disciplina INTEGER,
+    nome_curso VARCHAR(100),
+    pre_requisito_nome VARCHAR(100)
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT
+        d.nome_disciplina AS nome_disciplina,
+        d.carga_horaria AS carga_horaria_disciplina,
+        c.nome AS nome_curso,
+        COALESCE(dp.nome_disciplina, 'Nenhum') AS pre_requisito_nome -- Mostra 'Nenhum' se não houver pré-requisito
+    FROM
+        disciplina d
+    JOIN
+        curso c ON d.id_curso = c.id_curso -- Junta com a tabela curso para obter o nome do curso
+    LEFT JOIN
+        disciplina dp ON d.id_pre_requisito = dp.id_disciplina -- LEFT JOIN com a própria tabela disciplina para encontrar o pré-requisito
+    ORDER BY
+        c.nome, d.nome_disciplina; -- Ordena por nome do curso e nome da disciplina para melhor visualização
+END;
+$$ LANGUAGE plpgsql;

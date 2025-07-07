@@ -1,61 +1,50 @@
-CREATE OR REPLACE FUNCTION cadastrar(
-    p_tabela TEXT,
+CREATE OR REPLACE FUNCTION cadastrar_dados_generico(
+    p_nome_tabela TEXT,
     p_nomes_colunas TEXT[],
-    p_valores_colunas TEXT[]
-)
-RETURNS TEXT AS $$
+    p_valores TEXT[]
+) RETURNS TEXT AS $$
 DECLARE
     v_colunas_str TEXT;
     v_valores_str TEXT;
-    v_sql TEXT;
-    v_retorno_id INTEGER;
-    v_pk_coluna TEXT;
+    v_query TEXT;
+    i INTEGER;
 BEGIN
-    -- Validação: número de colunas e valores
-    IF array_length(p_nomes_colunas, 1) IS DISTINCT FROM array_length(p_valores_colunas, 1) THEN
-        RETURN 'Erro: O número de nomes de colunas e valores não corresponde.';
-    END IF;
+    -- Constrói a string de nomes de colunas (ex: "nome, carga_horaria")
+    v_colunas_str := '';
+    FOR i IN 1..array_length(p_nomes_colunas, 1) LOOP
+        IF i > 1 THEN
+            v_colunas_str := v_colunas_str || ', ';
+        END IF;
+        v_colunas_str := v_colunas_str || quote_ident(p_nomes_colunas[i]);
+    END LOOP;
 
-    -- Constrói a string de colunas usando STRING_AGG e quote_ident
-    -- É mais conciso do que o loop, mas faz a mesma coisa:
-    -- pega cada nome de coluna do array, coloca aspas nele e junta com ', '
-    SELECT string_agg(quote_ident(col), ', ')
-    INTO v_colunas_str
-    FROM unnest(p_nomes_colunas) AS col;
+    -- Constrói a string de valores (ex: 'Valor1', 'Valor2')
+    v_valores_str := '';
+    FOR i IN 1..array_length(p_valores, 1) LOOP
+        IF i > 1 THEN
+            v_valores_str := v_valores_str || ', ';
+        END IF;
+        -- Usa quote_literal para garantir que valores de texto sejam tratados corretamente
+        v_valores_str := v_valores_str || quote_literal(p_valores[i]);
+    END LOOP;
 
-    -- Constrói a string de valores usando STRING_AGG e quote_literal
-    -- Pega cada valor do array, coloca aspas de literal e junta com ', '
-    SELECT string_agg(quote_literal(val), ', ')
-    INTO v_valores_str
-    FROM unnest(p_valores_colunas) AS val;
-
-    -- Constrói a query SQL completa
-    v_sql := 'INSERT INTO ' || quote_ident(p_tabela) || ' (' || v_colunas_str || ') VALUES (' || v_valores_str || ')';
-
-    -- Tenta obter o nome da coluna PK para o RETURNING
-    -- (Essa parte não muda, é para que a função retorne o ID do novo registro)
-    SELECT a.attname
-    INTO v_pk_coluna
-    FROM pg_index i
-    JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
-    WHERE i.indrelid = p_tabela::regclass AND i.indisprimary;
+    -- Monta a query de INSERT usando format para segurança e EXECUTE para execução dinâmica
+    v_query := format('INSERT INTO %I (%s) VALUES (%s)',
+                      p_nome_tabela, v_colunas_str, v_valores_str);
 
     -- Executa a query
-    IF v_pk_coluna IS NOT NULL THEN
-        v_sql := v_sql || ' RETURNING ' || quote_ident(v_pk_coluna);
-        EXECUTE v_sql INTO v_retorno_id;
-        RETURN 'Registro inserido com sucesso na tabela ' || p_tabela || '. ID: ' || v_retorno_id;
-    ELSE
-        EXECUTE v_sql;
-        RETURN 'Registro inserido com sucesso na tabela ' || p_tabela || '.';
-    END IF;
+    EXECUTE v_query;
 
+    RETURN 'Dados cadastrados com sucesso na tabela ' || p_nome_tabela || '.';
 EXCEPTION
+    WHEN unique_violation THEN
+        RETURN 'Erro: Violação de chave única ao cadastrar dados na tabela ' || p_nome_tabela || '.';
+    WHEN foreign_key_violation THEN
+        RETURN 'Erro: Violação de chave estrangeira ao cadastrar dados na tabela ' || p_nome_tabela || '. Verifique os IDs referenciados.';
     WHEN OTHERS THEN
-        RETURN 'Erro ao inserir registro na tabela ' || p_tabela || ': ' || SQLERRM;
+        RETURN 'Erro ao cadastrar dados na tabela ' || p_nome_tabela || ': ' || SQLERRM;
 END;
 $$ LANGUAGE plpgsql;
-
 ----------------TESTES FUNÇÃO CADASTRAR
 SELECT cadastrar(
     'aluno',

@@ -1,0 +1,37 @@
+-- Função de Trigger para Validar Lançamento de Notas
+-- Esta função é chamada ANTES de um resultado de avaliação ser inserido ou atualizado.
+-- Verifica se o aluno está matriculado na turma da avaliação.
+CREATE OR REPLACE FUNCTION validar_lancamento_nota()
+RETURNS TRIGGER AS $$
+DECLARE
+    v_id_turma_avaliacao INTEGER;
+    v_aluno_matriculado_na_turma BOOLEAN;
+BEGIN
+    -- Obtém o id_turma da avaliação
+    SELECT pt.id_turma
+    INTO v_id_turma_avaliacao
+    FROM avaliacao av
+    JOIN professor_turma pt ON av.id_prof_turma = pt.id_prof_turma
+    WHERE av.id_avaliacao = NEW.id_avaliacao;
+
+    -- Verifica se o aluno está matriculado na turma da avaliação
+    SELECT EXISTS (
+        SELECT 1
+        FROM aluno_turma at
+        WHERE at.id_aluno_turma = NEW.id_aluno_turma
+          AND at.id_turma = v_id_turma_avaliacao
+    ) INTO v_aluno_matriculado_na_turma;
+
+    IF NOT v_aluno_matriculado_na_turma THEN
+        RAISE EXCEPTION 'Erro de Lançamento de Nota: O aluno não está matriculado na turma da avaliação.';
+    END IF;
+
+    RETURN NEW; -- Permite a operação
+END;
+$$ LANGUAGE plpgsql;
+
+-- Trigger para chamar a função de validação antes de cada INSERT ou UPDATE na tabela result_avaliacao
+CREATE OR REPLACE TRIGGER trg_validar_lancamento_nota
+BEFORE INSERT OR UPDATE ON result_avaliacao
+FOR EACH ROW
+EXECUTE FUNCTION validar_lancamento_nota();
