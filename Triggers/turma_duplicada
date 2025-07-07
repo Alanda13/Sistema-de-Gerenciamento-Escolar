@@ -1,0 +1,3 @@
+ALTER TABLE turma
+ADD CONSTRAINT uq_sala_horario_turma
+UNIQUE (sala, horario_aula);
