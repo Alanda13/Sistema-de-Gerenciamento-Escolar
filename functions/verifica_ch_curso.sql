@@ -28,3 +28,6 @@ EXCEPTION
         RETURN 'Erro ao verificar carga horária do curso: ' || SQLERRM;
 END;
 $$ LANGUAGE plpgsql;
+
+
+-------funcionando 

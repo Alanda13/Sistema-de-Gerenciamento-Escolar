@@ -22,3 +22,5 @@ BEGIN
         c.nome, d.nome_disciplina; -- Ordena por nome do curso e nome da disciplina para melhor visualização
 END;
 $$ LANGUAGE plpgsql;
+
+-----------funcionando

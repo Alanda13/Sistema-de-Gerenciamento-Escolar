@@ -37,3 +37,5 @@ BEGIN
         prof.nome, pl.ano, pl.semestre, dis.nome_disciplina;
 END;
 $$ LANGUAGE plpgsql;
+
+----------funcionando mas falta melhorar

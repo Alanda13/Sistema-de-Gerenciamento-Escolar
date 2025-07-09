@@ -41,3 +41,7 @@ BEGIN
         dis.nome_disciplina, pl.ano, pl.semestre, t.sala;
 END;
 $$ LANGUAGE plpgsql;
+
+
+
+--------funcionando

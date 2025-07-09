@@ -67,13 +67,5 @@ GRANT EXECUTE ON FUNCTION remover(TEXT, TEXT, TEXT) TO coordenador;
 
 ALTER ROLE administrador SUPERUSER CREATEDB CREATEROLE;
 
--- Revoga todos os privilégios em TODAS as tabelas existentes no esquema public para o papel PUBLIC (todos os usuários).
-REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM PUBLIC;
--- Define que TODAS as futuras tabelas criadas no esquema public NÃO terão privilégios concedidos ao PUBLIC por padrão.
-ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL PRIVILEGES ON TABLES FROM PUBLIC;
 
--- Revoga todos os privilégios em TODAS as funções existentes no esquema public para o papel PUBLIC.
-REVOKE ALL PRIVILEGES ON ALL FUNCTIONS IN SCHEMA public FROM PUBLIC;
--- Define que TODAS as futuras funções criadas no esquema public NÃO terão privilégios concedidos ao PUBLIC por padrão.
-ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL PRIVILEGES ON FUNCTIONS FROM PUBLIC;
 
